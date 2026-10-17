@@ -109,6 +109,8 @@ def build_command(target, opts, nmap_path="nmap"):
     if timing in list("012345"):
         cmd.append(f"-T{timing}")
 
+    cmd += ["--stats-every", "2s"]  # makes nmap emit % done + ETA lines we parse
+
     xmlf = tempfile.NamedTemporaryFile(prefix="ttk-", suffix=".xml", delete=False)
     xmlf.close()
     cmd += ["-oX", xmlf.name, "--"]
@@ -156,6 +158,26 @@ def parse_xml(path):
     return hosts
 
 
+# --------------------------------------------------------- progress parsing
+_PCT_RE = re.compile(r"About ([\d.]+)% done")
+_REM_RE = re.compile(r"\(([\d:]+) remaining\)")
+
+
+def _parse_progress(line):
+    pct, rem = _PCT_RE.search(line), _REM_RE.search(line)
+    if not pct and not rem:
+        return None
+    out = {}
+    if pct:
+        out["percent"] = round(float(pct.group(1)), 1)
+    if rem:
+        sec = 0
+        for part in rem.group(1).split(":"):
+            sec = sec * 60 + int(part)
+        out["remaining_sec"] = sec
+    return out
+
+
 # --------------------------------------------------------------- job runner
 JOBS = {}
 _LOCK = threading.Lock()
@@ -167,7 +189,8 @@ def active_count():
 
 
 def start_scan(target, opts, cfg):
-    ok, reason = check_scope(target, cfg.get("authorized_scopes", []), cfg.get("excluded", []))
+    ok, reason = check_scope(target, cfg.get("authorized_scopes", []),
+                             cfg.get("excluded", []))
     if not ok:
         raise ScopeError(reason)
     if active_count() >= cfg.get("max_concurrent_scans", 2):
@@ -175,7 +198,7 @@ def start_scan(target, opts, cfg):
     cmd, xmlpath = build_command(target, opts, cfg.get("nmap_path", "nmap"))
     jid = uuid.uuid4().hex[:12]
     job = {"id": jid, "target": target, "command": " ".join(cmd),
-           "status": "running", "log": [], "hosts": [],
+           "status": "running", "log": [], "hosts": [], "progress": None,
            "started": time.time(), "finished": None}
     with _LOCK:
         JOBS[jid] = job
@@ -193,6 +216,10 @@ def _run(job, cmd, xmlpath, cfg):
             job["log"].append(line.rstrip("\n"))
             if len(job["log"]) > 2000:
                 job["log"] = job["log"][-2000:]
+            pr = _parse_progress(line)
+            if pr:
+                job["progress"] = {**(job.get("progress") or {}), **pr,
+                                   "updated": time.time()}
             if time.time() - start > cfg.get("scan_timeout_sec", 900):
                 p.kill()
                 job["log"].append("[timeout] scan exceeded limit, killed")
@@ -200,6 +227,8 @@ def _run(job, cmd, xmlpath, cfg):
         p.wait()
         job["hosts"] = parse_xml(xmlpath)
         job["status"] = "done" if p.returncode == 0 else "error"
+        if job["status"] == "done":
+            job["progress"] = {"percent": 100, "remaining_sec": 0, "updated": time.time()}
     except FileNotFoundError:
         job["status"] = "error"
         job["log"].append("[error] nmap not found — is it installed and on PATH?")

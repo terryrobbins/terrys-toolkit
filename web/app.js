@@ -10,19 +10,50 @@ const state = {
 };
 let authRequired = false;
 let polling = null;
+let etaTimer = null, etaRemaining = null;
 
-// ---- init: scope + auth ----
-fetch("api/config").then(r => r.json()).then(c => {
-  $("#scope").textContent = (c.authorized_scopes || []).join("  ·  ") || "(none configured!)";
-  if (c.excluded && c.excluded.length)
-    $("#scope").textContent += "   ✕ " + c.excluded.join(", ");
-  authRequired = !!c.auth_required;
-  if (authRequired) {
-    $("#tokwrap").hidden = false;
-    const saved = sessionStorage.getItem("ttk_token");
-    if (saved) $("#token").value = saved;
+// ---- scope + auth ----
+function renderScope(c) {
+  $("#scope-input").value = (c.authorized_scopes || []).join(", ");
+  $("#exclude-input").value = (c.excluded || []).join(", ");
+  const open = !!c.wide_open, st = $("#scope-state");
+  $("#scopebar").classList.toggle("open", open);
+  $("#notice").classList.toggle("open", open);
+  st.classList.remove("open", "set"); st.classList.add(open ? "open" : "set");
+  if (open) {
+    st.textContent = "⚠ WIDE OPEN (0.0.0.0/0) — every target allowed. Set your mission's authorized CIDRs before scanning.";
+    $("#notice").textContent = "⚠ Scope is wide open — this will scan anything you type. Only hit what you're authorized to.";
+  } else {
+    st.textContent = "✓ scoped — targets outside the list are refused";
+    $("#notice").textContent = "⚠ Authorized use only. Targets outside the mission scope are refused.";
   }
-}).catch(() => { $("#scope").textContent = "server unreachable"; });
+}
+function loadConfig() {
+  fetch("api/config").then(r => r.json()).then(c => {
+    renderScope(c);
+    authRequired = !!c.auth_required;
+    if (authRequired) {
+      $("#tokwrap").hidden = false;
+      const s = sessionStorage.getItem("ttk_token"); if (s) $("#token").value = s;
+    }
+  }).catch(() => { $("#scope-state").textContent = "server unreachable"; });
+}
+loadConfig();
+
+const splitList = s => (s || "").split(/[\s,]+/).map(x => x.trim()).filter(Boolean);
+$("#scope-apply").onclick = async () => {
+  const st = $("#scope-state"); st.className = "scope-state"; st.textContent = "saving…";
+  try {
+    const r = await fetch("api/scope", {
+      method: "POST", headers: headers(),
+      body: JSON.stringify({ scopes: splitList($("#scope-input").value),
+                             excluded: splitList($("#exclude-input").value) }),
+    });
+    const d = await r.json();
+    if (!r.ok) { st.textContent = "✖ " + d.error; return; }
+    renderScope(d);
+  } catch (e) { st.textContent = "✖ " + e; }
+};
 
 // ---- tabs ----
 $$(".tab").forEach(t => t.onclick = () => {
@@ -105,6 +136,33 @@ function headers() {
 }
 function setStatus(s, cls) { const el = $("#status"); el.textContent = s; el.className = "status " + cls; }
 
+// ---- progress + countdown ----
+function fmtEta(s) {
+  s = Math.max(0, Math.round(s));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60, p = n => String(n).padStart(2, "0");
+  return h ? `${h}:${p(m)}:${p(ss)}` : `${m}:${p(ss)}`;
+}
+function showProgress(p) {
+  $("#progress").hidden = false;
+  if (p && p.percent != null) {
+    $("#progbar").style.width = p.percent + "%";
+    $("#progpct").textContent = Math.round(p.percent) + "%";
+  }
+  if (p && p.remaining_sec != null) {
+    etaRemaining = p.remaining_sec;
+    $("#countdown").textContent = etaRemaining > 0 ? fmtEta(etaRemaining) + " left" : "finishing…";
+  }
+}
+function startEtaTick() {
+  stopEtaTick();
+  etaTimer = setInterval(() => {
+    if (etaRemaining == null) return;
+    etaRemaining = Math.max(0, etaRemaining - 1);
+    $("#countdown").textContent = etaRemaining > 0 ? fmtEta(etaRemaining) + " left" : "finishing…";
+  }, 1000);
+}
+function stopEtaTick() { if (etaTimer) { clearInterval(etaTimer); etaTimer = null; } }
+
 async function run() {
   const target = $("#target").value.trim();
   if (!target) { $("#target").focus(); return; }
@@ -112,6 +170,9 @@ async function run() {
   $("#run").disabled = true;
   $("#console").textContent = "";
   $("#results").innerHTML = "";
+  $("#progress").hidden = true;
+  $("#progbar").style.width = "0%"; $("#progpct").textContent = "0%";
+  etaRemaining = null; $("#countdown").textContent = "estimating…";
   setStatus("launching…", "running");
   try {
     const r = await fetch("api/scan", {
@@ -128,6 +189,8 @@ async function run() {
 
 function poll(id) {
   setStatus("running", "running");
+  $("#progress").hidden = false;
+  startEtaTick();
   const con = $("#console");
   polling = setInterval(async () => {
     let j;
@@ -135,8 +198,12 @@ function poll(id) {
     catch { return; }
     con.textContent = (j.log || []).join("\n");
     con.scrollTop = con.scrollHeight;
+    if (j.progress) showProgress(j.progress);
     if (j.status !== "running") {
       clearInterval(polling); polling = null;
+      stopEtaTick();
+      showProgress({ percent: 100 });
+      $("#countdown").textContent = j.status === "done" ? "complete" : "stopped";
       $("#run").disabled = false;
       setStatus(j.status, j.status === "done" ? "done" : "error");
       render(j.hosts || []);

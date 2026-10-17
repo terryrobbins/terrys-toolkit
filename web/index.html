@@ -17,9 +17,15 @@
     </div>
     <p class="tag">// authorized network reconnaissance console</p>
     <div class="scopebar" id="scopebar">
-      <span class="k">SCOPE</span> <span id="scope" class="v">loading…</span>
+      <span class="k">MISSION SCOPE</span>
+      <input id="scope-input" type="text" spellcheck="false" autocomplete="off"
+             placeholder="authorized CIDRs — e.g. 10.10.0.0/16, 192.168.1.0/24">
+      <input id="exclude-input" type="text" spellcheck="false" autocomplete="off"
+             placeholder="exclude (optional) — e.g. 10.10.0.1, 10.10.9.0/24">
+      <button id="scope-apply">SET</button>
+      <span id="scope-state" class="scope-state"></span>
     </div>
-    <div class="notice">⚠ Authorized use only. Scans are restricted to the scope above — targets outside it are refused.</div>
+    <div class="notice" id="notice">⚠ Authorized use only. Set the mission scope — targets outside it are refused.</div>
   </header>
 
   <main>
@@ -118,6 +124,11 @@
       <div class="console-hdr">
         <span class="lbl">OUTPUT</span>
         <span id="status" class="status idle">idle</span>
+      </div>
+      <div class="progress" id="progress" hidden>
+        <div class="bar"><div id="progbar"></div></div>
+        <span id="progpct">0%</span>
+        <span id="countdown" class="eta">estimating…</span>
       </div>
       <pre id="console" class="console"></pre>
     </section>

@@ -24,7 +24,7 @@ DEFAULT_CFG = {
     "bind_host": "0.0.0.0",
     "bind_port": 8777,
     "nmap_path": "nmap",
-    "authorized_scopes": ["192.168.55.0/24", "127.0.0.1/32"],
+    "authorized_scopes": ["0.0.0.0/0"],  # set per mission from the UI
     "excluded": [],
     "access_token": "",          # empty = no token (LAN-only, trusted net)
     "max_concurrent_scans": 2,
@@ -44,6 +44,32 @@ def load_cfg():
 
 
 CFG = load_cfg()
+
+
+def save_cfg():
+    """Persist the editable keys back to config.json so mission scope survives restarts."""
+    path = os.path.join(HERE, "config.json")
+    try:
+        disk = json.load(open(path)) if os.path.exists(path) else {}
+    except Exception:
+        disk = {}
+    disk.update({"authorized_scopes": CFG["authorized_scopes"], "excluded": CFG["excluded"]})
+    tmp = path + ".tmp"
+    json.dump(disk, open(tmp, "w"), indent=2)
+    os.replace(tmp, path)
+
+
+def valid_cidrs(items):
+    """Return cleaned list of valid CIDR/IP strings, or raise ValueError."""
+    import ipaddress
+    out = []
+    for raw in items:
+        raw = raw.strip()
+        if not raw:
+            continue
+        ipaddress.ip_network(raw, strict=False)  # raises on bad input
+        out.append(raw)
+    return out
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -84,10 +110,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         p = urlparse(self.path).path
         if p == "/api/config":
+            scopes = CFG["authorized_scopes"]
             return self._json(200, {
-                "authorized_scopes": CFG["authorized_scopes"],
+                "authorized_scopes": scopes,
                 "excluded": CFG["excluded"],
                 "auth_required": bool(CFG.get("access_token")),
+                "wide_open": any(s.strip() in ("0.0.0.0/0", "::/0") for s in scopes),
             })
         if p.startswith("/api/scan/"):
             if not self._authed():
@@ -100,7 +128,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         p = urlparse(self.path).path
-        if p != "/api/scan":
+        if p not in ("/api/scan", "/api/scope"):
             return self.send_error(404)
         if not self._authed():
             return self._json(401, {"error": "bad or missing access token"})
@@ -109,6 +137,22 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(n) or b"{}")
         except Exception:
             return self._json(400, {"error": "invalid request body"})
+
+        if p == "/api/scope":
+            try:
+                scopes = valid_cidrs(body.get("scopes") or [])
+                excluded = valid_cidrs(body.get("excluded") or [])
+            except ValueError as e:
+                return self._json(400, {"error": f"invalid CIDR: {e}"})
+            if not scopes:
+                return self._json(400, {"error": "scope cannot be empty"})
+            CFG["authorized_scopes"], CFG["excluded"] = scopes, excluded
+            try:
+                save_cfg()
+            except Exception as e:  # noqa
+                return self._json(500, {"error": f"could not save: {e}"})
+            return self._json(200, {"authorized_scopes": scopes, "excluded": excluded,
+                                    "wide_open": any(s in ("0.0.0.0/0", "::/0") for s in scopes)})
         target = (body.get("target") or "").strip()
         opts = body.get("options") or {}
         if not target:
