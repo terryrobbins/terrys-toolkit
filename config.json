@@ -1,0 +1,10 @@
+{
+  "bind_host": "0.0.0.0",
+  "bind_port": 8777,
+  "nmap_path": "nmap",
+  "authorized_scopes": ["192.168.55.0/24", "127.0.0.1/32"],
+  "excluded": [],
+  "access_token": "",
+  "max_concurrent_scans": 2,
+  "scan_timeout_sec": 900
+}

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Terry's Toolkit</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="scanlines" aria-hidden="true"></div>
+
+  <header class="hdr">
+    <div class="brand">
+      <span class="prompt">root@toolkit</span><span class="sep">:~#</span>
+      <h1>TERRY'S&nbsp;TOOLKIT</h1>
+    </div>
+    <p class="tag">// authorized network reconnaissance console</p>
+    <div class="scopebar" id="scopebar">
+      <span class="k">SCOPE</span> <span id="scope" class="v">loading…</span>
+    </div>
+    <div class="notice">⚠ Authorized use only. Scans are restricted to the scope above — targets outside it are refused.</div>
+  </header>
+
+  <main>
+    <!-- target + run -->
+    <section class="targetbar card">
+      <label class="fld">
+        <span class="lbl">TARGET</span>
+        <input id="target" type="text" inputmode="url" autocomplete="off" spellcheck="false"
+               placeholder="10.0.0.5  •  192.168.55.0/24  •  host.lab">
+      </label>
+      <div class="tokwrap" id="tokwrap" hidden>
+        <label class="fld">
+          <span class="lbl">TOKEN</span>
+          <input id="token" type="password" autocomplete="off" placeholder="access token">
+        </label>
+      </div>
+      <button id="run" class="run">▶ RUN SCAN</button>
+    </section>
+
+    <!-- tabs -->
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="scan" role="tab">SCAN</button>
+      <button class="tab" data-tab="vuln" role="tab">VULN</button>
+    </nav>
+
+    <!-- SCAN options -->
+    <section class="card panel" id="panel-scan">
+      <div class="optrow">
+        <span class="lbl">SCAN TYPE</span>
+        <div class="seg" data-opt="scan">
+          <button data-val="ping">Ping sweep</button>
+          <button data-val="connect" class="on">TCP connect</button>
+          <button data-val="syn">SYN <small>root</small></button>
+        </div>
+      </div>
+      <div class="optrow">
+        <span class="lbl">PORTS</span>
+        <div class="seg" data-opt="ports">
+          <button data-val="fast">Fast</button>
+          <button data-val="top100">Top 100</button>
+          <button data-val="top1000" class="on">Top 1000</button>
+          <button data-val="all">All 65k</button>
+          <button data-val="custom">Custom…</button>
+        </div>
+      </div>
+      <div class="optrow custom-ports" id="customports" hidden>
+        <span class="lbl">&nbsp;</span>
+        <input id="ports-custom" type="text" placeholder="e.g. 22,80,443,8000-8100" spellcheck="false">
+      </div>
+      <div class="optrow">
+        <span class="lbl">DETECT</span>
+        <div class="switches">
+          <label class="sw"><input type="checkbox" data-opt="sV"><span></span>Service&nbsp;/&nbsp;version <code>-sV</code></label>
+          <label class="sw"><input type="checkbox" data-opt="O"><span></span>OS <code>-O</code> <small>root</small></label>
+          <label class="sw"><input type="checkbox" data-opt="sC"><span></span>Default scripts <code>-sC</code></label>
+          <label class="sw"><input type="checkbox" data-opt="Pn"><span></span>Skip host discovery <code>-Pn</code></label>
+          <label class="sw"><input type="checkbox" data-opt="A"><span></span>Aggressive <code>-A</code></label>
+        </div>
+      </div>
+      <div class="optrow">
+        <span class="lbl">TIMING</span>
+        <div class="seg" data-opt="timing">
+          <button data-val="2">T2 slow</button>
+          <button data-val="3">T3</button>
+          <button data-val="4" class="on">T4</button>
+          <button data-val="5">T5 fast</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- VULN options -->
+    <section class="card panel" id="panel-vuln" hidden>
+      <p class="vuln-note">Runs nmap's <code>--script vuln</code> NSE category against the target (service/version detection on). Slower — it probes each open service for known weaknesses. Findings show under each host below.</p>
+      <div class="optrow">
+        <span class="lbl">PORTS</span>
+        <div class="seg" data-opt="vports">
+          <button data-val="top100" class="on">Top 100</button>
+          <button data-val="top1000">Top 1000</button>
+          <button data-val="custom">Custom…</button>
+        </div>
+      </div>
+      <div class="optrow custom-ports" id="vcustomports" hidden>
+        <span class="lbl">&nbsp;</span>
+        <input id="vports-custom" type="text" placeholder="e.g. 80,443,445" spellcheck="false">
+      </div>
+    </section>
+
+    <!-- command preview -->
+    <section class="card cmd">
+      <span class="lbl">COMMAND</span>
+      <code id="cmdpreview">nmap …</code>
+    </section>
+
+    <!-- console -->
+    <section class="card console-wrap">
+      <div class="console-hdr">
+        <span class="lbl">OUTPUT</span>
+        <span id="status" class="status idle">idle</span>
+      </div>
+      <pre id="console" class="console"></pre>
+    </section>
+
+    <!-- results -->
+    <section id="results" class="results"></section>
+  </main>
+
+  <footer class="ftr">terry's toolkit · wraps your local nmap · scope-guarded</footer>
+  <script src="app.js"></script>
+</body>
+</html>
