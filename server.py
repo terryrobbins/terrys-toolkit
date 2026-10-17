@@ -34,12 +34,15 @@ DEFAULT_CFG = {
 
 def load_cfg():
     cfg = dict(DEFAULT_CFG)
-    path = os.path.join(HERE, "config.json")
-    if os.path.exists(path):
-        try:
-            cfg.update(json.load(open(path)))
-        except Exception as e:  # noqa
-            print(f"[warn] bad config.json ({e}); using defaults")
+    # config.json = shareable defaults (committed). config.local.json = secrets
+    # like access_token (git-ignored), overlaid on top and never pushed.
+    for name in ("config.json", "config.local.json"):
+        path = os.path.join(HERE, name)
+        if os.path.exists(path):
+            try:
+                cfg.update(json.load(open(path)))
+            except Exception as e:  # noqa
+                print(f"[warn] bad {name} ({e}); ignoring it")
     return cfg
 
 

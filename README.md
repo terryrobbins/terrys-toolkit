@@ -35,10 +35,32 @@ Open **http://localhost:8777** on the same box, or from your phone/laptop on the
 | `bind_port` | default `8777`. |
 | `scan_timeout_sec`, `max_concurrent_scans` | safety limits. |
 
-## Reaching it from your phone off-network
-On the same Wi-Fi, the LAN IP just works. For true remote access (phone on cellular) you'd put it
-behind a tunnel like `cloudflared` **with `access_token` set** — but understand you're then exposing
-a scanner, so only do that behind real auth/VPN and never point it at networks you don't own.
+## Reach it from your phone anywhere — use a private VPN, not a public tunnel
+
+On the same Wi-Fi, the box's LAN IP just works. For access from anywhere (phone on cellular),
+**do NOT put this behind a public tunnel** (cloudflared/ngrok quick tunnels) — that exposes a live
+nmap runner on the open internet, which is an abuse magnet and attributable to you. Use a private
+mesh VPN instead so only *your* devices can reach it:
+
+### Tailscale (recommended)
+1. On the box: install and bring it up (needs a real terminal for sudo):
+   ```bash
+   curl -fsSL https://tailscale.com/install.sh | sh
+   sudo tailscale up
+   ```
+   Note the machine's Tailscale name/IP it prints (e.g. `kali` / `100.x.y.z`).
+2. On your iPhone: install the **Tailscale** app from the App Store, sign in with the **same account**.
+3. From the phone (on any network), open `http://<tailscale-name-or-ip>:8777`. Private, encrypted,
+   reachable only by devices on your tailnet. No public URL, no open scanner.
+
+### Access token (always set it when the tool is reachable by anything but localhost)
+The token lives in **`config.local.json`** (git-ignored — never commit it):
+```json
+{ "access_token": "a-long-random-string" }
+```
+Generate one with `python3 -c 'import secrets;print(secrets.token_urlsafe(24))'`. The UI asks for it
+and the API enforces it. Even on a tailnet, keep it on as defense in depth, and set a real mission
+scope rather than leaving `0.0.0.0/0`.
 
 ## How it's built
 - `server.py` — stdlib HTTP server: serves the UI, exposes `/api/scan` (start) and `/api/scan/<id>` (poll).
